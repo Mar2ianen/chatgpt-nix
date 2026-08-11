@@ -37,6 +37,13 @@ nix build
 `nix flake check` also validates the desktop entry, icon, wrapper policy,
 PipeWire ALSA paths and unresolved ELF dependencies.
 
+## GitHub Actions
+
+The repository builds the package and contract on pushes, pull requests,
+manual runs and a daily schedule. A separate daily worker downloads the latest
+upstream DEB, updates its version and hash, builds it first, and opens a draft
+PR only when the upstream package changed.
+
 The runtime smoke test should be performed from the graphical session:
 
 ```sh

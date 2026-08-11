@@ -1,0 +1,159 @@
+name: Update ChatGPT package
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "47 4 * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-chatgpt
+  cancel-in-progress: false
+
+env:
+  NIX_CONFIG: experimental-features = nix-command flakes
+  PACKAGE_URL: https://persistent.oaistatic.com/codex-app-prod/linux/deb/latest/chatgpt_amd64.deb
+
+jobs:
+  update:
+    name: Check upstream DEB and open update PR
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: Enable Nix binary cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Download upstream DEB and read metadata
+        id: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          deb="$RUNNER_TEMP/chatgpt_amd64.deb"
+          curl --fail --location --retry 3 --retry-all-errors \
+            --output "$deb" "$PACKAGE_URL"
+          version=$(dpkg-deb --field "$deb" Version)
+          hash=$(nix hash file --type sha256 --base64 "$deb")
+          {
+            echo "version=$version"
+            echo "hash=sha256-$hash"
+          } >> "$GITHUB_OUTPUT"
+          echo "Upstream version: $version"
+          echo "Nix hash: sha256-$hash"
+
+      - name: Update package metadata
+        env:
+          UPSTREAM_VERSION: ${{ steps.upstream.outputs.version }}
+          UPSTREAM_HASH: ${{ steps.upstream.outputs.hash }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path("package.nix")
+          text = path.read_text()
+          text, version_count = re.subn(
+              r'(?m)^(  version = )"[^"]+";',
+              rf'\1"{os.environ["UPSTREAM_VERSION"]}";',
+              text,
+              count=1,
+          )
+          text, hash_count = re.subn(
+              r'(?m)^(    hash = )"[^"]+";',
+              rf'\1"{os.environ["UPSTREAM_HASH"]}";',
+              text,
+              count=1,
+          )
+          if version_count != 1 or hash_count != 1:
+              raise SystemExit("package.nix metadata layout changed")
+          path.write_text(text)
+          PY
+
+      - name: Stop when upstream is unchanged
+        id: changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- package.nix; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Upstream DEB is unchanged."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff -- package.nix
+          fi
+
+      - name: Check for an existing update PR
+        if: steps.changed.outputs.changed == 'true'
+        id: existing_pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch="automation/update-chatgpt-${{ steps.upstream.outputs.version }}"
+          count=$(gh pr list --repo "$GITHUB_REPOSITORY" --state all \
+            --head "$branch" --json number --jq 'length')
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "Open update PRs for $branch: $count"
+
+      - name: Build updated package before publishing
+        if: steps.changed.outputs.changed == 'true' && steps.existing_pr.outputs.count == '0'
+        run: |
+          nix flake check --all-systems
+          nix build .#default
+          nix build .#checks.x86_64-linux.package-contract --no-link
+
+      - name: Commit and push update branch
+        if: steps.changed.outputs.changed == 'true' && steps.existing_pr.outputs.count == '0'
+        id: publish
+        env:
+          UPSTREAM_VERSION: ${{ steps.upstream.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch="automation/update-chatgpt-$UPSTREAM_VERSION"
+          git switch -c "$branch"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.nix
+          git commit -m "Update ChatGPT to $UPSTREAM_VERSION"
+          git push --set-upstream origin "$branch"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Open draft update PR
+        if: steps.changed.outputs.changed == 'true' && steps.existing_pr.outputs.count == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_VERSION: ${{ steps.upstream.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/pr-body.md" <<EOF
+          Automated update from the latest upstream ChatGPT DEB.
+
+          Upstream version: \`$UPSTREAM_VERSION\`
+
+          The workflow built the package and ran the full flake contract before opening this draft PR.
+          EOF
+          gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft \
+            --base main \
+            --head "${{ steps.publish.outputs.branch }}" \
+            --title "Update ChatGPT to $UPSTREAM_VERSION" \
+            --body-file "$RUNNER_TEMP/pr-body.md"

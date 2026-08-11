@@ -1,0 +1,86 @@
+name: Release ChatGPT
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - package.nix
+      - flake.nix
+      - flake.lock
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NIX_CONFIG: experimental-features = nix-command flakes
+  CACHIX_CACHE: ${{ vars.CACHIX_CACHE }}
+  CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+jobs:
+  release:
+    name: Build, cache and release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: Configure optional Cachix binary cache
+        if: env.CACHIX_CACHE != ''
+        uses: cachix/cachix-action@v17
+        with:
+          name: ${{ env.CACHIX_CACHE }}
+          authToken: ${{ env.CACHIX_AUTH_TOKEN }}
+
+      - name: Evaluate flake
+        run: nix flake check --all-systems
+
+      - name: Build package
+        run: nix build .#default
+
+      - name: Run package contract
+        run: nix build .#checks.x86_64-linux.package-contract --no-link
+
+      - name: Read package version
+        id: metadata
+        shell: bash
+        run: echo "version=$(nix eval --raw .#default.version)" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.metadata.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $tag already exists."
+            exit 0
+          fi
+          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          ChatGPT desktop package $VERSION.
+
+          Install or run from Nix:
+
+          - \`nix profile install github:$GITHUB_REPOSITORY\`
+          - \`nix run github:$GITHUB_REPOSITORY\`
+
+          The upstream DEB is fetched by the Nix flake and is not redistributed
+          as a GitHub Release asset.
+          EOF
+          gh release create "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "ChatGPT $VERSION" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"

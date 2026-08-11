@@ -11,15 +11,19 @@ The package is pinned to the DEB currently served by OpenAI:
 
 ## Run
 
-```sh
-nix run github:Mar2ianen/chatgpt-nix
-```
-
 Install it into the user profile:
 
 ```sh
 nix profile install github:Mar2ianen/chatgpt-nix
 ```
+
+Run it directly without installing a profile:
+
+```sh
+nix run github:Mar2ianen/chatgpt-nix
+```
+
+The local equivalent is `nix run .#chatgpt` (or simply `nix run .`).
 
 The flake currently targets `x86_64-linux`, matching the upstream package.
 The launcher forces Electron's native Wayland Ozone backend. It intentionally
@@ -43,6 +47,13 @@ The repository builds the package and contract on pushes, pull requests,
 manual runs and a daily schedule. A separate daily worker downloads the latest
 upstream DEB, updates its version and hash, builds it first, and opens a draft
 PR only when the upstream package changed.
+
+When an updated package reaches `main`, GitHub Actions creates a matching
+release tag and GitHub Release. The release does not redistribute the upstream
+DEB; it points users to the flake and `nix run` command. A public Cachix binary
+cache can be used by configuring the `CACHIX_CACHE` repository variable; add the
+`CACHIX_AUTH_TOKEN` secret when the release worker should publish build results
+to that cache.
 
 The runtime smoke test should be performed from the graphical session:
 

@@ -11,8 +11,21 @@
         config.allowUnfree = true;
       };
       package = pkgs.callPackage ./package.nix { };
+      app = {
+        type = "app";
+        program = "${package}/bin/chatgpt";
+        meta = {
+          description = "Official ChatGPT desktop application for Linux";
+          mainProgram = "chatgpt";
+        };
+      };
     in {
       packages.${system}.default = package;
+
+      apps.${system} = {
+        default = app;
+        chatgpt = app;
+      };
 
       checks.${system}.package-contract = pkgs.runCommand "chatgpt-package-contract" {
         nativeBuildInputs = [

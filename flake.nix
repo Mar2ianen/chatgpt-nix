@@ -3,6 +3,15 @@
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
+  nixConfig = {
+    extra-substituters = [
+      "https://marsianen.cachix.org"
+    ];
+    extra-trusted-public-keys = [
+      "marsianen.cachix.org-1:yR2PKsVeh9eoKzG9i3Ej5uP3Wg6ecUge13tg86mQF6s="
+    ];
+  };
+
   outputs = { nixpkgs, ... }:
     let
       system = "x86_64-linux";

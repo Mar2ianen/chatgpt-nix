@@ -24,6 +24,8 @@ nix run github:Mar2ianen/chatgpt-nix
 ```
 
 The local equivalent is `nix run .#chatgpt` (or simply `nix run .`).
+To explicitly accept the flake's public Cachix configuration, add
+`--accept-flake-config` to the command.
 
 The flake currently targets `x86_64-linux`, matching the upstream package.
 The launcher forces Electron's native Wayland Ozone backend. It intentionally
@@ -50,10 +52,10 @@ PR only when the upstream package changed.
 
 When an updated package reaches `main`, GitHub Actions creates a matching
 release tag and GitHub Release. The release does not redistribute the upstream
-DEB; it points users to the flake and `nix run` command. A public Cachix binary
-cache can be used by configuring the `CACHIX_CACHE` repository variable; add the
-`CACHIX_AUTH_TOKEN` secret when the release worker should publish build results
-to that cache.
+DEB; it points users to the flake and `nix run` command. The flake is configured
+to use the public `marsianen.cachix.org` cache and its public signing key. The
+release worker uses the same cache when `CACHIX_CACHE` is set; add the
+`CACHIX_AUTH_TOKEN` secret when it should publish build results to that cache.
 
 The runtime smoke test should be performed from the graphical session:
 

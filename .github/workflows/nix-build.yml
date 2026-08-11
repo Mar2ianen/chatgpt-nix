@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: nix-build-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: nix-build-v2-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:

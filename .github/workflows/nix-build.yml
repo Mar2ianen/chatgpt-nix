@@ -2,6 +2,8 @@ name: Nix build
 
 on:
   push:
+    branches:
+      - main
   pull_request:
   workflow_dispatch:
   schedule:
@@ -11,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: nix-build-${{ github.workflow }}-${{ github.ref }}
+  group: nix-build-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:

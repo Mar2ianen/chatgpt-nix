@@ -23,7 +23,9 @@ nix profile install github:Mar2ianen/chatgpt-nix
 
 The flake currently targets `x86_64-linux`, matching the upstream package.
 The launcher forces Electron's native Wayland Ozone backend. It intentionally
-does not fall back to X11 and does not add any sandbox-disabling flag.
+does not fall back to X11 and does not add any sandbox-disabling flag. ALSA is
+wired to the Nix-provided PipeWire backend so microphone capture does not
+depend on `/usr/share/alsa` or `/usr/lib/alsa-lib` existing on the host.
 
 ## Local checks
 
@@ -31,6 +33,9 @@ does not fall back to X11 and does not add any sandbox-disabling flag.
 nix flake check
 nix build
 ```
+
+`nix flake check` also validates the desktop entry, icon, wrapper policy,
+PipeWire ALSA paths and unresolved ELF dependencies.
 
 The runtime smoke test should be performed from the graphical session:
 

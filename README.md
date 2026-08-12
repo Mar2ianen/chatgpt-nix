@@ -11,19 +11,27 @@ The package is pinned to the DEB currently served by OpenAI:
 
 ## Run
 
-```sh
-nix run github:Mar2ianen/chatgpt-nix
-```
-
 Install it into the user profile:
 
 ```sh
 nix profile install github:Mar2ianen/chatgpt-nix
 ```
 
+Run it directly without installing a profile:
+
+```sh
+nix run github:Mar2ianen/chatgpt-nix
+```
+
+The local equivalent is `nix run .#chatgpt` (or simply `nix run .`).
+To explicitly accept the flake's public Cachix configuration, add
+`--accept-flake-config` to the command.
+
 The flake currently targets `x86_64-linux`, matching the upstream package.
 The launcher forces Electron's native Wayland Ozone backend. It intentionally
-does not fall back to X11 and does not add any sandbox-disabling flag.
+does not fall back to X11 and does not add any sandbox-disabling flag. ALSA is
+wired to the Nix-provided PipeWire backend so microphone capture does not
+depend on `/usr/share/alsa` or `/usr/lib/alsa-lib` existing on the host.
 
 ## Local checks
 
@@ -31,6 +39,23 @@ does not fall back to X11 and does not add any sandbox-disabling flag.
 nix flake check
 nix build
 ```
+
+`nix flake check` also validates the desktop entry, icon, wrapper policy,
+PipeWire ALSA paths and unresolved ELF dependencies.
+
+## GitHub Actions
+
+The repository builds the package and contract on pushes, pull requests,
+manual runs and a daily schedule. A separate daily worker downloads the latest
+upstream DEB, updates its version and hash, builds it first, and opens a draft
+PR only when the upstream package changed.
+
+When an updated package reaches `main`, GitHub Actions creates a matching
+release tag and GitHub Release. The release does not redistribute the upstream
+DEB; it points users to the flake and `nix run` command. The flake is configured
+to use the public `marsianen.cachix.org` cache and its public signing key. The
+release worker uses the same cache when `CACHIX_CACHE` is set; add the
+`CACHIX_AUTH_TOKEN` secret when it should publish build results to that cache.
 
 The runtime smoke test should be performed from the graphical session:
 

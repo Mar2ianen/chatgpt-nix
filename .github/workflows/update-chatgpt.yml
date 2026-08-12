@@ -1,0 +1,180 @@
+name: Update ChatGPT package
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "47 4 * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-chatgpt
+  cancel-in-progress: false
+
+env:
+  NIX_CONFIG: experimental-features = nix-command flakes
+
+jobs:
+  update:
+    name: Check upstream DEB and open update PR
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: Download upstream DEB and read metadata
+        id: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          deb="$RUNNER_TEMP/chatgpt_amd64.deb"
+          package_url=$(awk -F'"' '/^[[:space:]]*url = "https:/{print $2; exit}' package.nix)
+          test -n "$package_url"
+          curl --fail --location --retry 3 --retry-all-errors \
+            --output "$deb" "$package_url"
+          version=$(dpkg-deb --field "$deb" Version)
+          sha256=$(sha256sum "$deb" | awk '{print $1}')
+          hash=$(nix hash file --type sha256 --base64 "$deb")
+          {
+            echo "version=$version"
+            echo "sha256=$sha256"
+            echo "hash=sha256-$hash"
+          } >> "$GITHUB_OUTPUT"
+          echo "Upstream version: $version"
+          echo "Source URL: $package_url"
+          echo "SHA-256: $sha256"
+          echo "Nix hash: sha256-$hash"
+
+      - name: Update package metadata
+        env:
+          UPSTREAM_VERSION: ${{ steps.upstream.outputs.version }}
+          UPSTREAM_SHA256: ${{ steps.upstream.outputs.sha256 }}
+          UPSTREAM_HASH: ${{ steps.upstream.outputs.hash }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path("package.nix")
+          text = path.read_text()
+          text, version_count = re.subn(
+              r'(?m)^(  version = )"[^"]+";',
+              rf'\1"{os.environ["UPSTREAM_VERSION"]}";',
+              text,
+              count=1,
+          )
+          text, hash_count = re.subn(
+              r'(?m)^(    hash = )"[^"]+";',
+              rf'\1"{os.environ["UPSTREAM_HASH"]}";',
+              text,
+              count=1,
+          )
+          if version_count != 1 or hash_count != 1:
+              raise SystemExit("package.nix metadata layout changed")
+          path.write_text(text)
+
+          readme = Path("README.md")
+          readme_text = readme.read_text()
+          readme_text, readme_version_count = re.subn(
+              r'(?m)^- version: `[^`]+`$',
+              f'- version: `{os.environ["UPSTREAM_VERSION"]}`',
+              readme_text,
+              count=1,
+          )
+          readme_text, readme_hash_count = re.subn(
+              r'(?m)^- SHA-256: `[^`]+`$',
+              f'- SHA-256: `{os.environ["UPSTREAM_SHA256"]}`',
+              readme_text,
+              count=1,
+          )
+          if readme_version_count != 1 or readme_hash_count != 1:
+              raise SystemExit("README metadata layout changed")
+          readme.write_text(readme_text)
+          PY
+
+      - name: Stop when upstream is unchanged
+        id: changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- package.nix README.md; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Upstream DEB is unchanged."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff -- package.nix README.md
+          fi
+
+      - name: Check for an existing update PR
+        if: steps.changed.outputs.changed == 'true'
+        id: existing_pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch="automation/update-chatgpt-${{ steps.upstream.outputs.version }}"
+          count=$(gh pr list --repo "$GITHUB_REPOSITORY" --state all \
+            --head "$branch" --json number --jq 'length')
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "Open update PRs for $branch: $count"
+
+      - name: Build updated package before publishing
+        if: steps.changed.outputs.changed == 'true' && steps.existing_pr.outputs.count == '0'
+        run: |
+          nix flake check --all-systems
+          nix build .#default
+          nix build .#checks.x86_64-linux.package-contract --no-link
+
+      - name: Commit and push update branch
+        if: steps.changed.outputs.changed == 'true' && steps.existing_pr.outputs.count == '0'
+        id: publish
+        env:
+          UPSTREAM_VERSION: ${{ steps.upstream.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch="automation/update-chatgpt-$UPSTREAM_VERSION"
+          git switch -c "$branch"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.nix README.md
+          git commit -m "Update ChatGPT to $UPSTREAM_VERSION"
+          git push --set-upstream origin "$branch"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Open draft update PR
+        if: steps.changed.outputs.changed == 'true' && steps.existing_pr.outputs.count == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_VERSION: ${{ steps.upstream.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/pr-body.md" <<EOF
+          Automated update from the latest upstream ChatGPT DEB.
+
+          Upstream version: \`$UPSTREAM_VERSION\`
+
+          The workflow built the package and ran the full flake contract before opening this draft PR.
+          EOF
+          gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft \
+            --base main \
+            --head "${{ steps.publish.outputs.branch }}" \
+            --title "Update ChatGPT to $UPSTREAM_VERSION" \
+            --body-file "$RUNNER_TEMP/pr-body.md"

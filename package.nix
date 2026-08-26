@@ -43,11 +43,11 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "chatgpt";
-  version = "26.803.81509";
+  version = "26.820.60940";
 
   src = fetchurl {
     url = "https://persistent.oaistatic.com/codex-app-prod/linux/deb/latest/chatgpt_amd64.deb";
-    hash = "sha256-qb+Ro2j598Tuo4CCqfuPtGuNAFtxmm13FdLloZgsOOs=";
+    hash = "sha256-MdlWqMbFFfjYfgt6zZ7JGffmhbpZMxtLl6pF+FOv39c=";
   };
 
   nativeBuildInputs = [
@@ -149,12 +149,13 @@ stdenv.mkDerivation (finalAttrs: {
     # The Debian launcher is a symlink. Replace it with a Nix wrapper so the
     # desktop entry also gets the runtime tools it expects from PATH.
     rm "$out/bin/chatgpt"
-    makeWrapper "$out/lib/chatgpt/codex-launcher" "$out/bin/chatgpt" \
+    makeShellWrapper "$out/lib/chatgpt/codex-launcher" "$out/bin/chatgpt" \
       --prefix PATH : ${lib.makeBinPath [ xdg-utils ]} \
       --set ALSA_CONFIG_PATH "$out/share/alsa/alsa.conf" \
       --set ALSA_CONFIG_DIR "${alsa-lib}/share/alsa" \
       --set ALSA_PLUGIN_DIR "${pipewire}/lib/alsa-lib" \
       --set ELECTRON_OZONE_PLATFORM_HINT wayland \
+      --run 'if [ ! -t 1 ] || [ ! -t 2 ]; then log_dir="''${XDG_STATE_HOME:-$HOME/.local/state}/chatgpt-nix"; mkdir -p "$log_dir" && exec >>"$log_dir/chatgpt.log" 2>&1 || exec >/dev/null 2>&1; fi' \
       --add-flags "--ozone-platform=wayland"
     runHook postInstall
   '';

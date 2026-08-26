@@ -5,9 +5,9 @@ amd64 Debian package.
 
 The package is pinned to the DEB currently served by OpenAI:
 
-- version: `26.803.81509`
+- version: `26.820.60940`
 - source: <https://persistent.oaistatic.com/codex-app-prod/linux/deb/latest/chatgpt_amd64.deb>
-- SHA-256: `a9bf91a368f9f7c4eea38082a9fb8fb46b8d005b719a6d7715d2e5a1982c38eb`
+- SHA-256: `31d956a8c6c515f8d87e0b7acd9ec919f7e685ba59331b4b97aa45f853afdfd7`
 
 ## Run
 
@@ -45,10 +45,10 @@ PipeWire ALSA paths and unresolved ELF dependencies.
 
 ## GitHub Actions
 
-The repository builds the package and contract on pushes, pull requests,
-manual runs and a daily schedule. A separate daily worker downloads the latest
-upstream DEB, updates its version and hash, builds it first, and opens a draft
-PR only when the upstream package changed.
+The repository builds the package and contract on pushes and manual runs. A
+daily worker downloads the latest upstream DEB, calculates both hashes, builds
+it first, updates one rolling PR, closes obsolete update PRs, and merges the
+validated update automatically.
 
 When an updated package reaches `main`, GitHub Actions creates a matching
 release tag and GitHub Release. The release does not redistribute the upstream
@@ -56,6 +56,8 @@ DEB; it points users to the flake and `nix run` command. The flake is configured
 to use the public `marsianen.cachix.org` cache and its public signing key. The
 release worker uses the same cache when `CACHIX_CACHE` is set; add the
 `CACHIX_AUTH_TOKEN` secret when it should publish build results to that cache.
+The launcher also redirects logs when stdout/stderr are not terminals, which
+keeps Electron stable when started from Niri or a desktop entry.
 
 The runtime smoke test should be performed from the graphical session:
 

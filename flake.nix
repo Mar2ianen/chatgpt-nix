@@ -54,6 +54,7 @@
         wrapper_strings=$(strings "${package}/bin/chatgpt" "${package}/bin/.chatgpt-wrapped")
         ! grep -q -- '--no-sandbox' <<<"$wrapper_strings"
         ! grep -q -- 'ozone-platform=x11' <<<"$wrapper_strings"
+        grep -q -- 'chatgpt-nix' <<<"$wrapper_strings"
         grep -q -- 'ALSA_CONFIG_PATH' <<<"$wrapper_strings"
         grep -q -- 'ALSA_PLUGIN_DIR' <<<"$wrapper_strings"
         grep -q -- 'ozone-platform=wayland' <<<"$wrapper_strings"

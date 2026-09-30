@@ -66,12 +66,23 @@
         "$cli" --help >/dev/null
         "$cli" app-server --help >/dev/null
 
-        tectonic="${package}/lib/chatgpt/resources/plugins/openai-bundled/plugins/latex/bin/tectonic"
+        latex_plugin="${package}/lib/chatgpt/resources/plugins/openai-bundled/plugins/latex"
+        tectonic="$latex_plugin/bin/tectonic"
         tectonic_real="$tectonic.real"
-        test -x "$tectonic"
-        test -f "$tectonic_real"
-        test ! -x "$tectonic_real"
-        strings "$tectonic" | grep -q 'tectonic.real'
+        if test -e "$tectonic"; then
+          test -x "$tectonic"
+          test -f "$tectonic_real"
+          test ! -x "$tectonic_real"
+          strings "$tectonic" | grep -q 'tectonic.real'
+        else
+          # Recent desktop bundles provide Tectonic through the app and keep
+          # detection plus managed TeX Live installation in the plugin.
+          test -x "$latex_plugin/scripts/detect_tectonic.py"
+          test -x "$latex_plugin/scripts/detect_texlive.py"
+          test -x "$latex_plugin/scripts/install_texlive.py"
+          test -f "$latex_plugin/skills/latex-compile/SKILL.md"
+          grep -q 'CODEX_TECTONIC_PATH' "$latex_plugin/README.md"
+        fi
 
         while IFS= read -r -d "" elf; do
           case "$elf" in

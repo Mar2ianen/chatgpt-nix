@@ -5,9 +5,9 @@ amd64 Debian package.
 
 The package is pinned to the DEB currently served by OpenAI:
 
-- version: `26.1021.22027`
+- version: `26.1023.51421`
 - source: <https://persistent.oaistatic.com/codex-app-prod/linux/deb/latest/chatgpt_amd64.deb>
-- SHA-256: `eb0831c734f154f93f8ebcf0e17d118da0dea7dc1737dc61a1e71444375bf190`
+- SHA-256: `4484dc2b54fc0978beb23b8d8d717494e4e0b4fbeab0a876739105e50b44de5a`
 
 ## Run
 
